@@ -1,9 +1,10 @@
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { writeFile, mkdir } from 'fs/promises';
-import { join, resolve } from 'path';
+import { writeFile, mkdir, readFile, stat } from 'fs/promises';
+import { join, resolve, basename } from 'path';
 import { homedir } from 'os';
+import sharp from 'sharp';
 
 // Get API key from environment (passed via Claude Desktop config)
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
@@ -34,7 +35,7 @@ server.registerTool(
             model: z.string().optional().default('sora-2').describe('The video generation model to use'),
             seconds: z.string().optional().default('4').describe('Clip duration in seconds'),
             size: z.string().optional().default('720x1280').describe('Output resolution formatted as width x height'),
-            input_reference: z.string().optional().describe('Optional image or video file path for reference')
+            input_reference: z.string().optional().describe('Optional absolute or relative path to an image (JPEG, PNG, WEBP) or video file to use as reference. Images will be automatically resized to match the video size parameter. Supported formats: JPEG, PNG, WEBP for images; MP4, MOV, WEBM for videos.')
         }
     },
     async ({ prompt, model = 'sora-2', seconds = '4', size = '720x1280', input_reference }) => {
@@ -47,7 +48,63 @@ server.registerTool(
 
             // Handle input_reference if provided
             if (input_reference) {
-                formData.append('input_reference', input_reference);
+                try {
+                    // Resolve the file path (handle both absolute and relative paths)
+                    const filePath = resolve(input_reference);
+                    
+                    // Check if file exists
+                    await stat(filePath);
+                    
+                    // Get the filename
+                    const filename = basename(filePath);
+                    
+                    // Determine MIME type based on file extension
+                    const ext = filename.toLowerCase().split('.').pop();
+                    let mimeType = 'image/jpeg'; // default
+                    if (ext === 'png') mimeType = 'image/png';
+                    else if (ext === 'webp') mimeType = 'image/webp';
+                    else if (ext === 'jpg' || ext === 'jpeg') mimeType = 'image/jpeg';
+                    else if (ext === 'mp4') mimeType = 'video/mp4';
+                    else if (ext === 'mov') mimeType = 'video/quicktime';
+                    else if (ext === 'webm') mimeType = 'video/webm';
+                    
+                    // Parse video size to get dimensions (required for Sora API)
+                    const sizeParts = size.split('x');
+                    if (sizeParts.length !== 2) {
+                        throw new Error(`Invalid size format: ${size}. Expected format: "widthxheight" (e.g., "720x1280")`);
+                    }
+                    
+                    const targetWidth = parseInt(sizeParts[0], 10);
+                    const targetHeight = parseInt(sizeParts[1], 10);
+                    
+                    if (isNaN(targetWidth) || isNaN(targetHeight) || targetWidth <= 0 || targetHeight <= 0) {
+                        throw new Error(`Invalid size dimensions: ${size}. Width and height must be positive numbers.`);
+                    }
+                    
+                    // For images, ALWAYS resize to match video dimensions (Sora API requirement)
+                    if (mimeType.startsWith('image/')) {
+                        // Resize image to match video size using sharp (compulsory)
+                        const resizedBuffer = await sharp(filePath)
+                            .resize(targetWidth, targetHeight, {
+                                fit: 'cover', // Cover the entire area, may crop to maintain aspect ratio
+                                position: 'center' // Center the image when cropping
+                            })
+                            .toBuffer();
+                        
+                        // Create a Blob from the resized image buffer
+                        const fileBlob = new Blob([resizedBuffer], { type: mimeType });
+                        formData.append('input_reference', fileBlob, filename);
+                    } else {
+                        // For videos, read as-is (videos can't be resized easily with sharp)
+                        // Note: Video input_reference must already match the size parameter
+                        const fileBuffer = await readFile(filePath);
+                        const fileBlob = new Blob([fileBuffer], { type: mimeType });
+                        formData.append('input_reference', fileBlob, filename);
+                    }
+                } catch (fileError) {
+                    const errorMessage = fileError instanceof Error ? fileError.message : String(fileError);
+                    throw new Error(`Failed to process input_reference file: ${errorMessage}`);
+                }
             }
 
             const response = await fetch(`${SORA_API_BASE}/videos`, {

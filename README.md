@@ -8,55 +8,77 @@ A Model Context Protocol (MCP) server that integrates with OpenAI's Sora 2 API f
 - **Remix Videos**: Create variations of existing videos with new prompts
 - **Video Status**: Check the status and progress of video generation jobs
 
-## Prerequisites
+### 1. Create Environment File
 
-- Node.js 18+ 
-- OpenAI API key with Sora access
-- An MCP-compatible client (Claude, Cursor, VS Code, etc.)
+Create a `.env` file in the project root with your OpenAI API key:
 
-## Installation
-
-1. Clone the repository:
 ```bash
-git clone https://github.com/Doriandarko/sora-mcp
-cd sora-mcp
+# Create .env file
+cat > .env << EOF
+OPENAI_API_KEY=your-openai-api-key-here
+DOWNLOAD_DIR=your_download_DIR
+PORT=3000
+EOF
 ```
 
-2. Install dependencies:
+
+**Get your API key from:** https://platform.openai.com/api-keys
+
+### 2. Configure for Claude Desktop (Optional)
+
+If you want to use this with Claude Desktop:
+
+1. Copy the example config:
+   ```bash
+   cp claude_desktop_config.example.json ~/Library/Application\ Support/Claude/claude_desktop_config.json
+   ```
+
+2. Edit the config file and update:
+   - `args`: Change `/ABSOLUTE/PATH/TO/sora-mcp/dist/stdio-server.js`
+   - `OPENAI_API_KEY`: Add your actual API key
+   - `DOWNLOAD_DIR`: Set your preferred download folder (optional)
+
+3. Restart Claude Desktop
+
+### 3. Test the Server
+
+#### HTTP Mode (for testing with MCP Inspector):
+
 ```bash
-npm install
+npm run dev
 ```
 
-3. Build the project:
+Then in another terminal:
 ```bash
-npm run build
+npx @modelcontextprotocol/inspector
 ```
 
-4. Configure for Claude Desktop:
-   - Copy `claude_desktop_config.example.json` to `~/Library/Application Support/Claude/claude_desktop_config.json`
-   - Update the `args` path to match your installation directory
-   - Add your OpenAI API key to the `OPENAI_API_KEY` field
-   - Optionally set `DOWNLOAD_DIR` to your preferred download folder
+Connect to: `http://localhost:3000/mcp`
 
-## Server Architecture
+#### Production Mode:
 
-This project includes **two server implementations** for different use cases:
+```bash
+npm start
+```
 
-### 📱 `stdio-server.ts` - For Claude Desktop
-- **Transport:** stdio (Standard Input/Output)
-- **Use case:** Local process communication
-- **How it works:** Claude Desktop spawns this as a child process
-- **Benefits:** Fast, secure, no network needed
-- **Used by:** Claude Desktop
+## Available Commands
 
-### 🌐 `server.ts` - For Remote Access
-- **Transport:** HTTP/Streamable HTTP  
-- **Use case:** Remote clients, web-based tools
-- **How it works:** Runs as HTTP server on port 3000
-- **Benefits:** Network accessible, multiple clients
-- **Used by:** MCP Inspector, VS Code, Cursor, browsers
+- `npm run dev` - Run in development mode (auto-reload)
+- `npm run build` - Compile TypeScript to JavaScript
+- `npm start` - Run the compiled server
 
-**Why two servers?** Different MCP clients use different transports. This separation keeps the code clean and optimized for each transport type.
+## Project Structure
+
+```
+new sora2/
+├── src/
+│   ├── server.ts          # HTTP server (for MCP Inspector, web clients)
+│   └── stdio-server.ts    # stdio server (for Claude Desktop)
+├── dist/                  # Compiled JavaScript
+├── package.json
+├── tsconfig.json
+└── .env                   # Create this file with your API key
+```
 
 ## Usage
 
@@ -139,231 +161,3 @@ claude mcp add --transport http sora-server http://localhost:3000/mcp
 ```bash
 code --add-mcp '{"name":"sora-server","type":"http","url":"http://localhost:3000/mcp"}'
 ```
-
-### Cursor
-
-Add to your Cursor MCP settings with stdio transport (similar to Claude Desktop configuration above).
-
-## Available Tools
-
-### create-video
-
-Generate a video from a text prompt.
-
-**Parameters:**
-- `prompt` (required): Text description of the video to generate
-- `model` (optional): Model to use (default: "sora-2")
-- `seconds` (optional): Video duration in seconds (default: "4")
-- `size` (optional): Resolution as "widthxheight" (default: "720x1280")
-- `input_reference` (optional): Path to reference image/video
-
-**Example:**
-```javascript
-{
-  "prompt": "A calico cat playing a piano on stage",
-  "model": "sora-2",
-  "seconds": "8",
-  "size": "1024x1808"
-}
-```
-
-### get-video-status
-
-Check the status and progress of a video generation job.
-
-**Parameters:**
-- `video_id` (required): ID of the video to check
-
-**Example:**
-```javascript
-{
-  "video_id": "video_123"
-}
-```
-
-**Returns:** Video status including `progress` (0-100), `status` (queued/processing/completed), and completion timestamps.
-
-### list-videos
-
-List all your video generation jobs with pagination.
-
-**Parameters:**
-- `limit` (optional): Number of videos to retrieve (default: 20)
-- `after` (optional): Pagination cursor - get videos after this ID
-- `order` (optional): Sort order "asc" or "desc" (default: "desc")
-
-**Example:**
-```javascript
-{
-  "limit": 10,
-  "order": "desc"
-}
-```
-
-### download-video
-
-Get a curl command to manually download a completed video.
-
-**Parameters:**
-- `video_id` (required): ID of the video to download
-- `variant` (optional): Which format to download (defaults to MP4)
-
-**Example:**
-```javascript
-{
-  "video_id": "video_123"
-}
-```
-
-**Returns:** Ready-to-use curl command with authentication for downloading the video.
-
-### save-video ⭐ (Auto-Download)
-
-Automatically download and save a completed video to your computer.
-
-**Parameters:**
-- `video_id` (required): ID of the video to save
-- `output_path` (optional): Directory to save to (defaults to ~/Downloads)
-- `filename` (optional): Custom filename (defaults to video_id.mp4)
-
-**Example:**
-```javascript
-{
-  "video_id": "video_123",
-  "filename": "my-cat-video.mp4"
-}
-```
-
-**Returns:** File path where video was saved. No manual commands needed!
-
-### remix-video
-
-Create a remix of an existing video with a new prompt.
-
-**Parameters:**
-- `video_id` (required): ID of the completed video to remix
-- `prompt` (required): New text prompt for the remix
-
-**Example:**
-```javascript
-{
-  "video_id": "video_123",
-  "prompt": "Extend the scene with the cat taking a bow to the cheering audience"
-}
-```
-
-### delete-video
-
-Delete a video job and its assets.
-
-**Parameters:**
-- `video_id` (required): ID of the video to delete
-
-**Example:**
-```javascript
-{
-  "video_id": "video_123"
-}
-```
-
-## Typical Workflow
-
-1. **Create a video** → Get back a `video_id`
-   ```
-   "Create a video of a sunset over mountains"
-   ```
-
-2. **Check status** → Monitor progress
-   ```
-   "Check the status of video video_123"
-   ```
-
-3. **Save when ready** → Auto-download the video file
-   ```
-   "Save video video_123"
-   ```
-   Claude will automatically download it to your Downloads folder!
-
-4. **Clean up** → Delete old videos
-   ```
-   "Delete video video_123"
-   ```
-
-## API Response Format
-
-### Video Job Response
-
-```json
-{
-  "id": "video_123",
-  "object": "video",
-  "model": "sora-2",
-  "status": "queued",
-  "progress": 0,
-  "created_at": 1712697600,
-  "size": "1024x1808",
-  "seconds": "8",
-  "quality": "standard"
-}
-```
-
-### Remix Response
-
-```json
-{
-  "id": "video_456",
-  "object": "video",
-  "model": "sora-2",
-  "status": "queued",
-  "progress": 0,
-  "created_at": 1712698600,
-  "size": "720x1280",
-  "seconds": "8",
-  "remixed_from_video_id": "video_123"
-}
-```
-
-## Error Handling
-
-The server includes comprehensive error handling:
-
-- Missing API key validation on startup
-- API error responses with detailed messages
-- Graceful error returns in tool responses
-
-## Development
-
-### Project Structure
-
-```
-sora-mcp/
-├── src/
-│   └── server.ts       # Main server implementation
-├── dist/               # Compiled JavaScript (generated)
-├── package.json        # Dependencies and scripts
-├── tsconfig.json       # TypeScript configuration
-├── .env               # Environment variables (not in git)
-└── README.md          # This file
-```
-
-### Scripts
-
-- `npm run dev` - Run in development mode with tsx
-- `npm run build` - Compile TypeScript to JavaScript
-- `npm start` - Run compiled JavaScript
-
-## Environment Variables
-
-- `OPENAI_API_KEY` (required) - Your OpenAI API key
-- `PORT` (optional) - Server port (default: 3000)
-
-## License
-
-MIT
-
-## Resources
-
-- [Model Context Protocol Documentation](https://modelcontextprotocol.io)
-- [OpenAI Sora API Documentation](https://platform.openai.com/docs/api-reference/videos)
-- [MCP TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk)
-
