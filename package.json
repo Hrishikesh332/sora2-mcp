@@ -5,9 +5,11 @@
   "main": "dist/server.js",
   "type": "module",
   "scripts": {
-    "dev": "tsx src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "start": "node dist/stdio-server.js",
+    "start:http": "node dist/server.js",
+    "dev": "tsx src/stdio-server.ts",
+    "dev:http": "tsx src/server.ts"
   },
   "keywords": [
     "mcp",
