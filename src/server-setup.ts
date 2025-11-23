@@ -1,13 +1,29 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { config } from 'dotenv';
+import { parse } from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { readFileSync, existsSync } from 'fs';
 import { registerTools } from './tools/index.js';
 
-// Load .env file from the project directory
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-config({ path: join(__dirname, '..', '.env') });
+const envPath = join(__dirname, '..', '.env');
+
+if (existsSync(envPath)) {
+  try {
+    const envFile = readFileSync(envPath, 'utf-8');
+    const parsed = parse(envFile);
+    // Set environment variables without any console output
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!process.env[key]) {
+        process.env[key] = value;
+      }
+    }
+  } catch (error) {
+    // Silently fail if .env file can't be read
+  }
+}
 
 export function createServer(): McpServer {
   // Check for API key
